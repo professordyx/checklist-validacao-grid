@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { FileDown, CheckCircle2, AlertTriangle, XCircle, MinusCircle, ClipboardList, Shield, TestTube, Monitor, Layers, ChevronRight, HelpCircle, X } from "lucide-react";
+import { FileDown, CheckCircle2, AlertTriangle, XCircle, MinusCircle, ClipboardList, Shield, TestTube, Monitor, Layers, ChevronRight, HelpCircle, X, FileText } from "lucide-react";
 import { toast } from "sonner";
 
 type Status = "conforme" | "parcial" | "nconforme" | "na" | null;
@@ -329,6 +329,69 @@ const initialBlocks: Block[] = [
       },
     ],
   },
+  {
+    id: "bloco6",
+    title: "Qualidade e Documentação",
+    icon: <FileText className="w-5 h-5" />,
+    items: [
+      {
+        id: "F1",
+        label: "README completo com instruções de instalação, execução e deploy.",
+        help: "O README é a porta de entrada do projeto. Deve permitir que qualquer desenvolvedor clone o repositório e execute o sistema localmente sem ajuda externa. Inclui: pré-requisitos, passos de instalação, variáveis de ambiente e comandos de execução.",
+        howToCheck: "Clone o repositório em uma máquina limpa. Siga apenas as instruções do README. Se conseguir rodar o projeto sem perguntar nada ao autor, está conforme. Se precisou de informação extra, está parcial ou não conforme.",
+        guidingQuestion: "É possível instalar e rodar o projeto seguindo apenas o README? Quais informações estão faltando?",
+        status: null, evidence: ""
+      },
+      {
+        id: "F2",
+        label: "Changelog ou histórico de versões documentado.",
+        help: "O changelog registra as mudanças significativas entre versões. Facilita a rastreabilidade e permite entender a evolução do projeto. Pode ser um arquivo CHANGELOG.md ou o histórico de commits organizado.",
+        howToCheck: "Verifique se existe um arquivo CHANGELOG.md ou se os commits seguem um padrão (Conventional Commits). Deve ser possível entender o que mudou entre iterações sem ler o código.",
+        guidingQuestion: "Existe changelog ou histórico organizado? É possível rastrear as mudanças entre versões do protótipo?",
+        status: null, evidence: ""
+      },
+      {
+        id: "F3",
+        label: "Padrões de código definidos e aplicados (linter, formatter).",
+        help: "Padrões de código garantem consistência. Um linter (ESLint, Pylint) detecta erros e más práticas. Um formatter (Prettier, Black) padroniza a formatação. Ambos devem estar configurados e integrados ao workflow.",
+        howToCheck: "Verifique se há arquivos de configuração (.eslintrc, .prettierrc, pyproject.toml). Execute o linter: deve passar sem erros críticos. Verifique se há script no package.json para lint/format.",
+        guidingQuestion: "Quais ferramentas de lint/format estão configuradas? O código passa sem erros? Há integração com o CI?",
+        status: null, evidence: ""
+      },
+      {
+        id: "F4",
+        label: "Estrutura de pastas organizada e coerente com a arquitetura declarada.",
+        help: "A organização de pastas deve refletir a arquitetura. Se é MVC, deve haver pastas para models, views e controllers. Se é por features, cada feature deve ter sua pasta com componentes, hooks e testes.",
+        howToCheck: "Examine a árvore de diretórios. Compare com a arquitetura declarada na documentação. Verifique se não há arquivos 'soltos' na raiz ou pastas com nomes genéricos como 'utils' com centenas de arquivos.",
+        guidingQuestion: "A estrutura de pastas reflete a arquitetura? Há arquivos desorganizados ou pastas genéricas sobrecarregadas?",
+        status: null, evidence: ""
+      },
+      {
+        id: "F5",
+        label: "Variáveis de ambiente documentadas com exemplo (.env.example).",
+        help: "Variáveis de ambiente contêm configurações sensíveis (chaves de API, URLs de banco). Um arquivo .env.example lista todas as variáveis necessárias com valores fictícios, permitindo que novos desenvolvedores configurem o ambiente.",
+        howToCheck: "Verifique se existe .env.example na raiz do projeto. Compare com o .env real: todas as variáveis devem estar listadas no example. Nenhum .env real deve estar commitado no Git.",
+        guidingQuestion: "Existe .env.example? Todas as variáveis necessárias estão documentadas? O .env real está no .gitignore?",
+        status: null, evidence: ""
+      },
+      {
+        id: "F6",
+        label: "Comentários em código apenas onde necessário (código autoexplicativo).",
+        help: "Código bem escrito é autoexplicativo. Comentários devem explicar o 'porquê', não o 'o quê'. Funções com nomes claros e variáveis descritivas dispensam comentários. Excesso de comentários indica código confuso.",
+        howToCheck: "Revise 3-5 arquivos principais. O código é legível sem comentários? Os comentários existentes explicam decisões não óbvias (ex: workarounds, regras de negócio complexas)? Há comentários obsoletos?",
+        guidingQuestion: "O código é legível sem comentários excessivos? Os comentários existentes são úteis e atualizados?",
+        status: null, evidence: ""
+      },
+      {
+        id: "F7",
+        label: "Dependências atualizadas e sem vulnerabilidades conhecidas.",
+        help: "Dependências desatualizadas podem conter vulnerabilidades de segurança. O comando 'npm audit' ou 'pip audit' identifica pacotes com CVEs conhecidas. Dependências não utilizadas devem ser removidas.",
+        howToCheck: "Execute 'npm audit' (Node) ou 'pip audit' (Python). Verifique se há vulnerabilidades high/critical. Execute 'npx depcheck' para encontrar dependências não utilizadas. Atualize o que for seguro.",
+        guidingQuestion: "Quantas vulnerabilidades foram encontradas? Há dependências não utilizadas? O que foi atualizado?",
+        status: null, evidence: ""
+      },
+    ],
+  },
 ];
 
 function getStatusColor(status: Status) {
@@ -387,17 +450,92 @@ function HelpPanel({ item, onClose }: { item: CheckItem; onClose: () => void }) 
   );
 }
 
+const STORAGE_KEY = "grid-checklist-state";
+
+interface SavedState {
+  blocks: { id: string; items: { id: string; status: Status; evidence: string }[] }[];
+  validador: string;
+  grupo: string;
+  data: string;
+  arquitetura: string;
+  melhorias: string;
+  melhoriasBaixa: string;
+  conclusao: string;
+  lastSaved: string;
+}
+
+function loadState(): Partial<SavedState> | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as SavedState;
+  } catch {
+    return null;
+  }
+}
+
+function hydrateBlocks(saved: SavedState["blocks"] | undefined): Block[] {
+  if (!saved) return initialBlocks;
+  return initialBlocks.map((block) => {
+    const savedBlock = saved.find((sb) => sb.id === block.id);
+    if (!savedBlock) return block;
+    return {
+      ...block,
+      items: block.items.map((item) => {
+        const savedItem = savedBlock.items.find((si) => si.id === item.id);
+        if (!savedItem) return item;
+        return { ...item, status: savedItem.status, evidence: savedItem.evidence };
+      }),
+    };
+  });
+}
+
 export default function Home() {
-  const [blocks, setBlocks] = useState<Block[]>(initialBlocks);
+  const saved = useMemo(() => loadState(), []);
+  const [blocks, setBlocks] = useState<Block[]>(() => hydrateBlocks(saved?.blocks));
   const [activeBlock, setActiveBlock] = useState("bloco1");
-  const [validador, setValidador] = useState("");
-  const [grupo, setGrupo] = useState("");
-  const [data, setData] = useState(new Date().toISOString().split("T")[0]);
-  const [arquitetura, setArquitetura] = useState("");
-  const [melhorias, setMelhorias] = useState("");
-  const [melhoriasBaixa, setMelhoriasBaixa] = useState("");
-  const [conclusao, setConclusao] = useState("");
+  const [validador, setValidador] = useState(saved?.validador || "");
+  const [grupo, setGrupo] = useState(saved?.grupo || "");
+  const [data, setData] = useState(saved?.data || new Date().toISOString().split("T")[0]);
+  const [arquitetura, setArquitetura] = useState(saved?.arquitetura || "");
+  const [melhorias, setMelhorias] = useState(saved?.melhorias || "");
+  const [melhoriasBaixa, setMelhoriasBaixa] = useState(saved?.melhoriasBaixa || "");
+  const [conclusao, setConclusao] = useState(saved?.conclusao || "");
   const [openHelp, setOpenHelp] = useState<string | null>(null);
+
+  // Persistência automática no localStorage
+  useEffect(() => {
+    const state: SavedState = {
+      blocks: blocks.map((b) => ({
+        id: b.id,
+        items: b.items.map((i) => ({ id: i.id, status: i.status, evidence: i.evidence })),
+      })),
+      validador,
+      grupo,
+      data,
+      arquitetura,
+      melhorias,
+      melhoriasBaixa,
+      conclusao,
+      lastSaved: new Date().toISOString(),
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }, [blocks, validador, grupo, data, arquitetura, melhorias, melhoriasBaixa, conclusao]);
+
+  const clearSavedData = () => {
+    if (window.confirm("Tem certeza que deseja limpar todos os dados preenchidos? Esta ação não pode ser desfeita.")) {
+      localStorage.removeItem(STORAGE_KEY);
+      setBlocks(initialBlocks);
+      setValidador("");
+      setGrupo("");
+      setData(new Date().toISOString().split("T")[0]);
+      setArquitetura("");
+      setMelhorias("");
+      setMelhoriasBaixa("");
+      setConclusao("");
+      toast.success("Dados limpos com sucesso.");
+    }
+  };
 
   const stats = useMemo(() => {
     const all = blocks.flatMap((b) => b.items);
@@ -591,10 +729,16 @@ export default function Home() {
           })}
         </nav>
 
-        <div className="mt-auto">
+        <div className="mt-auto space-y-2">
+          <div className="text-[10px] text-center text-muted-foreground bg-secondary/50 rounded py-1">
+            Salvamento automático ativo
+          </div>
           <Button onClick={generatePDF} className="w-full bg-[#C41E3A] hover:bg-[#a01830] text-white">
             <FileDown className="w-4 h-4 mr-2" />
             Gerar Relatório PDF
+          </Button>
+          <Button onClick={clearSavedData} variant="outline" className="w-full text-xs text-muted-foreground hover:text-destructive hover:border-destructive">
+            Limpar Dados
           </Button>
         </div>
       </aside>
