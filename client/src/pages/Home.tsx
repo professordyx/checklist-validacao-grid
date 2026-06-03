@@ -704,12 +704,25 @@ export default function Home() {
     .header { border-bottom: 3px solid #C41E3A; padding-bottom: 16px; margin-bottom: 24px; }
     .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 13px; color: #555; }
     .meta span { font-weight: 600; color: #1a1a1a; }
+    .score-box { margin: 20px 0; padding: 16px 24px; border: 2px solid #C41E3A; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; }
+    .score-value { font-size: 36px; font-weight: 800; }
+    .score-label { font-size: 14px; font-weight: 600; margin-top: 2px; }
+    .score-pronto { color: #059669; }
+    .score-quase { color: #d97706; }
+    .score-dev { color: #ea580c; }
+    .score-critico { color: #dc2626; }
+    .score-bar { width: 200px; height: 10px; background: #e5e7eb; border-radius: 5px; overflow: hidden; }
+    .score-bar-fill { height: 100%; border-radius: 5px; }
     .stats { display: flex; gap: 16px; margin: 16px 0; flex-wrap: wrap; }
     .stat { padding: 8px 16px; border-radius: 4px; font-size: 13px; font-weight: 600; }
     .stat-conforme { background: #d1fae5; color: #065f46; }
     .stat-parcial { background: #fef3c7; color: #92400e; }
     .stat-nconforme { background: #fee2e2; color: #991b1b; }
     .stat-na { background: #f3f4f6; color: #4b5563; }
+    .severity-badge { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-right: 6px; vertical-align: middle; }
+    .severity-critico { background: #fee2e2; color: #991b1b; }
+    .severity-medio { background: #fef3c7; color: #92400e; }
+    .severity-baixo { background: #f3f4f6; color: #4b5563; }
     .item { margin: 8px 0; padding: 8px 12px; border-left: 3px solid #ddd; font-size: 13px; page-break-inside: avoid; }
     .item-conforme { border-left-color: #10b981; }
     .item-parcial { border-left-color: #f59e0b; }
@@ -737,6 +750,20 @@ export default function Home() {
     <p>Grupo/Protótipo: <span>${grupo || "—"}</span></p>
     <p>Arquitetura: <span>${arquitetura || "—"}</span></p>
   </div>
+  <div class="score-box">
+    <div>
+      <div style="font-size:11px;color:#666;text-transform:uppercase;letter-spacing:1px;font-weight:600;">Score de Prontidão</div>
+      <div class="score-value ${readinessScore.percentage >= 80 ? 'score-pronto' : readinessScore.percentage >= 60 ? 'score-quase' : readinessScore.percentage >= 40 ? 'score-dev' : 'score-critico'}">${readinessScore.percentage}%</div>
+      <div class="score-label ${readinessScore.percentage >= 80 ? 'score-pronto' : readinessScore.percentage >= 60 ? 'score-quase' : readinessScore.percentage >= 40 ? 'score-dev' : 'score-critico'}">${readinessScore.label}</div>
+    </div>
+    <div style="text-align:right;">
+      <div style="font-size:11px;color:#666;margin-bottom:6px;">Pontos: ${readinessScore.score} / ${readinessScore.maxScore}</div>
+      <div class="score-bar">
+        <div class="score-bar-fill" style="width:${readinessScore.percentage}%;background:${readinessScore.percentage >= 80 ? '#059669' : readinessScore.percentage >= 60 ? '#d97706' : readinessScore.percentage >= 40 ? '#ea580c' : '#dc2626'}"></div>
+      </div>
+      <div style="font-size:10px;color:#999;margin-top:4px;">Ponderado por severidade (Crítico=3, Médio=2, Baixo=1)</div>
+    </div>
+  </div>
   <div class="stats">
     <div class="stat stat-conforme">Conforme: ${stats.conforme}</div>
     <div class="stat stat-parcial">Parcial: ${stats.parcial}</div>
@@ -747,6 +774,7 @@ export default function Home() {
     <h2>${block.title}</h2>
     ${block.items.map((item) => `
       <div class="item item-${item.status || "pending"}">
+        <span class="severity-badge ${item.weight === 3 ? 'severity-critico' : item.weight === 2 ? 'severity-medio' : 'severity-baixo'}">${item.weight === 3 ? 'Crítico' : item.weight === 2 ? 'Médio' : 'Baixo'}</span>
         <span class="item-label">${item.id}. ${item.label}</span>
         <span class="item-status" style="color:${item.status === "conforme" ? "#10b981" : item.status === "parcial" ? "#f59e0b" : item.status === "nconforme" ? "#ef4444" : "#9ca3af"}">${getStatusLabel(item.status)}</span>
         ${item.evidence ? `<div class="item-evidence">Evidência: ${item.evidence}</div>` : ""}
