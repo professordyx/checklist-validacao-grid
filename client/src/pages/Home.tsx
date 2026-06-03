@@ -7,7 +7,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { FileDown, CheckCircle2, AlertTriangle, XCircle, MinusCircle, ClipboardList, Shield, TestTube, Monitor, Layers, ChevronRight, HelpCircle, X, FileText, Upload, Download, Gauge } from "lucide-react";
+import { FileDown, CheckCircle2, AlertTriangle, XCircle, MinusCircle, ClipboardList, Shield, TestTube, Monitor, Layers, ChevronRight, HelpCircle, X, FileText, Upload, Download, Gauge, History, RotateCcw, Trash2, Eye } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
 
 type Status = "conforme" | "parcial" | "nconforme" | "na" | null;
@@ -452,6 +454,19 @@ function HelpPanel({ item, onClose }: { item: CheckItem; onClose: () => void }) 
 }
 
 const STORAGE_KEY = "grid-checklist-state";
+const HISTORY_KEY = "grid-checklist-history";
+
+interface Snapshot {
+  id: string;
+  name: string;
+  createdAt: string;
+  grupo: string;
+  validador: string;
+  globalScore: number;
+  globalLabel: string;
+  blockScores: { id: string; title: string; percentage: number; label: string }[];
+  state: SavedState;
+}
 
 interface SavedState {
   blocks: { id: string; items: { id: string; status: Status; evidence: string }[] }[];
@@ -503,6 +518,15 @@ export default function Home() {
   const [melhoriasBaixa, setMelhoriasBaixa] = useState(saved?.melhoriasBaixa || "");
   const [conclusao, setConclusao] = useState(saved?.conclusao || "");
   const [openHelp, setOpenHelp] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [snapshots, setSnapshots] = useState<Snapshot[]>(() => {
+    try {
+      const raw = localStorage.getItem(HISTORY_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch { return []; }
+  });
+  const [snapshotName, setSnapshotName] = useState("");
+  const [viewingSnapshot, setViewingSnapshot] = useState<Snapshot | null>(null);
 
   // Persistência automática no localStorage
   useEffect(() => {
@@ -524,7 +548,7 @@ export default function Home() {
   }, [blocks, validador, grupo, data, arquitetura, melhorias, melhoriasBaixa, conclusao]);
 
   const clearSavedData = () => {
-    if (window.confirm("Tem certeza que deseja limpar todos os dados preenchidos? Esta ação não pode ser desfeita.")) {
+    if (window.confirm("Tem certeza que deseja limpar todos os dados preenchidos? Esta a\u00e7\u00e3o n\u00e3o pode ser desfeita.")) {
       localStorage.removeItem(STORAGE_KEY);
       setBlocks(initialBlocks);
       setValidador("");
@@ -536,6 +560,86 @@ export default function Home() {
       setConclusao("");
       toast.success("Dados limpos com sucesso.");
     }
+  };
+
+  // --- Histórico de Versões ---
+  const saveSnapshot = () => {
+    const name = snapshotName.trim() || `Vers\u00e3o ${snapshots.length + 1}`;
+    const currentState: SavedState = {
+      blocks: blocks.map((b) => ({
+        id: b.id,
+        items: b.items.map((i) => ({ id: i.id, status: i.status, evidence: i.evidence })),
+      })),
+      validador, grupo, data, arquitetura, melhorias, melhoriasBaixa, conclusao,
+      lastSaved: new Date().toISOString(),
+    };
+    // Calcular scores por bloco
+    const blockScores = blocks.map((block) => {
+      const evaluated = block.items.filter((i) => i.status !== null && i.status !== "na");
+      if (evaluated.length === 0) return { id: block.id, title: block.title, percentage: 0, label: "Pendente" };
+      const maxS = evaluated.reduce((s, i) => s + i.weight * 3, 0);
+      const actS = evaluated.reduce((s, i) => s + i.weight * (i.status === "conforme" ? 3 : i.status === "parcial" ? 1.5 : 0), 0);
+      const pct = maxS > 0 ? Math.round((actS / maxS) * 100) : 0;
+      let label = "Cr\u00edtico";
+      if (pct >= 80) label = "Pronto";
+      else if (pct >= 60) label = "Quase Pronto";
+      else if (pct >= 40) label = "Em Dev.";
+      return { id: block.id, title: block.title, percentage: pct, label };
+    });
+    // Score global
+    const allItems = blocks.flatMap((b) => b.items);
+    const evaluated = allItems.filter((i) => i.status !== null && i.status !== "na");
+    let globalScore = 0;
+    let globalLabel = "Pendente";
+    if (evaluated.length > 0) {
+      const maxS = evaluated.reduce((s, i) => s + i.weight * 3, 0);
+      const actS = evaluated.reduce((s, i) => s + i.weight * (i.status === "conforme" ? 3 : i.status === "parcial" ? 1.5 : 0), 0);
+      globalScore = maxS > 0 ? Math.round((actS / maxS) * 100) : 0;
+      if (globalScore >= 80) globalLabel = "Pronto";
+      else if (globalScore >= 60) globalLabel = "Quase Pronto";
+      else if (globalScore >= 40) globalLabel = "Em Dev.";
+      else globalLabel = "Cr\u00edtico";
+    }
+    const snapshot: Snapshot = {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      name,
+      createdAt: new Date().toISOString(),
+      grupo: grupo || "\u2014",
+      validador: validador || "\u2014",
+      globalScore,
+      globalLabel,
+      blockScores,
+      state: currentState,
+    };
+    const updated = [snapshot, ...snapshots];
+    setSnapshots(updated);
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
+    setSnapshotName("");
+    toast.success(`Vers\u00e3o "${name}" salva com sucesso!`);
+  };
+
+  const restoreSnapshot = (snapshot: Snapshot) => {
+    if (!window.confirm(`Restaurar a vers\u00e3o "${snapshot.name}"? Os dados atuais ser\u00e3o substitu\u00eddos.`)) return;
+    const hydrated = hydrateBlocks(snapshot.state.blocks);
+    setBlocks(hydrated);
+    setValidador(snapshot.state.validador || "");
+    setGrupo(snapshot.state.grupo || "");
+    setData(snapshot.state.data || new Date().toISOString().split("T")[0]);
+    setArquitetura(snapshot.state.arquitetura || "");
+    setMelhorias(snapshot.state.melhorias || "");
+    setMelhoriasBaixa(snapshot.state.melhoriasBaixa || "");
+    setConclusao(snapshot.state.conclusao || "");
+    setHistoryOpen(false);
+    setViewingSnapshot(null);
+    toast.success(`Vers\u00e3o "${snapshot.name}" restaurada.`);
+  };
+
+  const deleteSnapshot = (id: string) => {
+    if (!window.confirm("Excluir esta vers\u00e3o do hist\u00f3rico?")) return;
+    const updated = snapshots.filter((s) => s.id !== id);
+    setSnapshots(updated);
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
+    toast.success("Vers\u00e3o exclu\u00edda.");
   };
 
   const stats = useMemo(() => {
@@ -947,6 +1051,21 @@ export default function Home() {
               Importar
             </Button>
           </div>
+          <Button onClick={() => setHistoryOpen(true)} variant="outline" className="w-full text-xs text-muted-foreground hover:text-foreground border-amber-500/30 hover:border-amber-500" size="sm">
+            <History className="w-3.5 h-3.5 mr-1" />
+            Hist\u00f3rico ({snapshots.length})
+          </Button>
+          <div className="flex gap-1">
+            <Input
+              value={snapshotName}
+              onChange={(e) => setSnapshotName(e.target.value)}
+              placeholder="Nome da vers\u00e3o..."
+              className="flex-1 text-xs h-8"
+            />
+            <Button onClick={saveSnapshot} size="sm" className="bg-amber-600 hover:bg-amber-700 text-white h-8 px-3">
+              Salvar
+            </Button>
+          </div>
           <Button onClick={clearSavedData} variant="outline" className="w-full text-xs text-muted-foreground hover:text-destructive hover:border-destructive">
             Limpar Dados
           </Button>
@@ -1173,14 +1292,140 @@ export default function Home() {
               Importar JSON
             </Button>
           </div>
+          <Button onClick={() => setHistoryOpen(true)} variant="outline" className="w-full border-amber-500/30" size="sm">
+            <History className="w-4 h-4 mr-1" />
+            Hist\u00f3rico de Vers\u00f5es ({snapshots.length})
+          </Button>
         </div>
 
         {/* Footer */}
         <footer className="mt-12 text-center text-xs text-muted-foreground border-t border-border pt-6">
-          <p>Checklist de Validação de Protótipos — Programa Grid 2026</p>
-          <p className="mt-1">Prof. Diocélio Goulart · dioceliogoulart.com.br</p>
+          <p>Checklist de Valida\u00e7\u00e3o de Prot\u00f3tipos \u2014 Programa Grid 2026</p>
+          <p className="mt-1">Prof. Dioc\u00e9lio Goulart \u00b7 dioceliogoulart.com.br</p>
         </footer>
       </main>
+
+      {/* Modal Hist\u00f3rico de Vers\u00f5es */}
+      <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <History className="w-5 h-5 text-amber-500" />
+              Hist\u00f3rico de Vers\u00f5es
+            </DialogTitle>
+            <DialogDescription>
+              Snapshots salvos do checklist. Restaure vers\u00f5es anteriores ou acompanhe a evolu\u00e7\u00e3o do prot\u00f3tipo.
+            </DialogDescription>
+          </DialogHeader>
+
+          {viewingSnapshot ? (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-lg">{viewingSnapshot.name}</h3>
+                <Button variant="outline" size="sm" onClick={() => setViewingSnapshot(null)}>
+                  <X className="w-3.5 h-3.5 mr-1" /> Voltar
+                </Button>
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div><span className="text-muted-foreground">Data:</span> {new Date(viewingSnapshot.createdAt).toLocaleString("pt-BR")}</div>
+                <div><span className="text-muted-foreground">Grupo:</span> {viewingSnapshot.grupo}</div>
+                <div><span className="text-muted-foreground">Validador:</span> {viewingSnapshot.validador}</div>
+                <div><span className="text-muted-foreground">Score Global:</span> <span className="font-bold">{viewingSnapshot.globalScore}%</span> ({viewingSnapshot.globalLabel})</div>
+              </div>
+              <div className="mt-4">
+                <h4 className="text-sm font-semibold mb-2 text-muted-foreground uppercase tracking-wider">Score por Bloco</h4>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                  {viewingSnapshot.blockScores.map((bs) => (
+                    <div key={bs.id} className="p-2 rounded-md bg-secondary/50 text-center">
+                      <p className="text-[10px] text-muted-foreground truncate">{bs.title}</p>
+                      <p className={`text-lg font-bold ${
+                        bs.percentage >= 80 ? "text-emerald-400" :
+                        bs.percentage >= 60 ? "text-amber-400" :
+                        bs.percentage >= 40 ? "text-orange-400" : "text-red-400"
+                      }`}>{bs.percentage}%</p>
+                      <p className="text-[9px] text-muted-foreground">{bs.label}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="flex gap-2 mt-4">
+                <Button onClick={() => restoreSnapshot(viewingSnapshot)} className="bg-amber-600 hover:bg-amber-700 text-white">
+                  <RotateCcw className="w-4 h-4 mr-1" /> Restaurar esta vers\u00e3o
+                </Button>
+              </div>
+            </div>
+          ) : snapshots.length === 0 ? (
+            <div className="py-8 text-center text-muted-foreground">
+              <History className="w-10 h-10 mx-auto mb-3 opacity-30" />
+              <p className="text-sm">Nenhuma vers\u00e3o salva ainda.</p>
+              <p className="text-xs mt-1">Use o campo \"Salvar\" no sidebar para criar um snapshot.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {snapshots.length >= 2 && (
+                <div className="p-3 rounded-md bg-secondary/30 border border-border">
+                  <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Evolu\u00e7\u00e3o do Score Global</h4>
+                  <div className="flex items-end gap-1 h-16">
+                    {[...snapshots].reverse().map((s) => (
+                      <div key={s.id} className="flex-1 flex flex-col items-center gap-0.5">
+                        <span className="text-[9px] text-muted-foreground">{s.globalScore}%</span>
+                        <div
+                          className={`w-full rounded-t-sm ${
+                            s.globalScore >= 80 ? "bg-emerald-500" :
+                            s.globalScore >= 60 ? "bg-amber-500" :
+                            s.globalScore >= 40 ? "bg-orange-500" : "bg-red-500"
+                          }`}
+                          style={{ height: `${Math.max(s.globalScore * 0.6, 4)}px` }}
+                        />
+                        <span className="text-[8px] text-muted-foreground truncate max-w-full">{s.name.slice(0, 6)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-xs">Vers\u00e3o</TableHead>
+                    <TableHead className="text-xs">Data</TableHead>
+                    <TableHead className="text-xs">Score</TableHead>
+                    <TableHead className="text-xs text-right">A\u00e7\u00f5es</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {snapshots.map((s) => (
+                    <TableRow key={s.id}>
+                      <TableCell className="text-sm font-medium">{s.name}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{new Date(s.createdAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</TableCell>
+                      <TableCell>
+                        <span className={`text-sm font-bold ${
+                          s.globalScore >= 80 ? "text-emerald-400" :
+                          s.globalScore >= 60 ? "text-amber-400" :
+                          s.globalScore >= 40 ? "text-orange-400" : "text-red-400"
+                        }`}>{s.globalScore}%</span>
+                        <span className="text-[10px] text-muted-foreground ml-1">{s.globalLabel}</span>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex gap-1 justify-end">
+                          <button onClick={() => setViewingSnapshot(s)} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors">
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                          <button onClick={() => restoreSnapshot(s)} className="p-1.5 rounded hover:bg-amber-500/10 text-muted-foreground hover:text-amber-500 transition-colors">
+                            <RotateCcw className="w-3.5 h-3.5" />
+                          </button>
+                          <button onClick={() => deleteSnapshot(s.id)} className="p-1.5 rounded hover:bg-red-500/10 text-muted-foreground hover:text-red-500 transition-colors">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
