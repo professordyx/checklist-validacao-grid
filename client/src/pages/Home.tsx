@@ -559,6 +559,23 @@ export default function Home() {
     return { total, done, progress: total > 0 ? (done / total) * 100 : 0 };
   }, [blocks]);
 
+  const blockReadinessScore = useCallback((blockId: string) => {
+    const block = blocks.find((b) => b.id === blockId);
+    if (!block) return { percentage: 0, label: "Pendente", color: "text-zinc-400", bgColor: "bg-zinc-500/20" };
+    const evaluated = block.items.filter((i) => i.status !== null && i.status !== "na");
+    if (evaluated.length === 0) return { percentage: 0, label: "Pendente", color: "text-zinc-400", bgColor: "bg-zinc-500/20" };
+    const maxScore = evaluated.reduce((sum, i) => sum + i.weight * 3, 0);
+    const actualScore = evaluated.reduce((sum, i) => {
+      const multiplier = i.status === "conforme" ? 3 : i.status === "parcial" ? 1.5 : 0;
+      return sum + i.weight * multiplier;
+    }, 0);
+    const percentage = maxScore > 0 ? Math.round((actualScore / maxScore) * 100) : 0;
+    if (percentage >= 80) return { percentage, label: "Pronto", color: "text-emerald-400", bgColor: "bg-emerald-500/20" };
+    if (percentage >= 60) return { percentage, label: "Quase", color: "text-amber-400", bgColor: "bg-amber-500/20" };
+    if (percentage >= 40) return { percentage, label: "Em Dev.", color: "text-orange-400", bgColor: "bg-orange-500/20" };
+    return { percentage, label: "Cr\u00edtico", color: "text-red-400", bgColor: "bg-red-500/20" };
+  }, [blocks]);
+
   const setItemStatus = (blockId: string, itemId: string, status: Status) => {
     setBlocks((prev) =>
       prev.map((b) =>
@@ -723,6 +740,21 @@ export default function Home() {
     .severity-critico { background: #fee2e2; color: #991b1b; }
     .severity-medio { background: #fef3c7; color: #92400e; }
     .severity-baixo { background: #f3f4f6; color: #4b5563; }
+    .block-summary { display: flex; gap: 12px; flex-wrap: wrap; margin: 16px 0 24px; padding: 12px 16px; background: #f9fafb; border-radius: 6px; border: 1px solid #e5e7eb; page-break-inside: avoid; }
+    .block-score-item { flex: 1; min-width: 140px; text-align: center; padding: 8px; border-radius: 4px; }
+    .block-score-item .block-title { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #666; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .block-score-item .block-pct { font-size: 18px; font-weight: 800; }
+    .block-score-item .block-label { font-size: 9px; font-weight: 600; }
+    .block-score-pronto { background: #d1fae5; }
+    .block-score-pronto .block-pct, .block-score-pronto .block-label { color: #065f46; }
+    .block-score-quase { background: #fef3c7; }
+    .block-score-quase .block-pct, .block-score-quase .block-label { color: #92400e; }
+    .block-score-dev { background: #ffedd5; }
+    .block-score-dev .block-pct, .block-score-dev .block-label { color: #9a3412; }
+    .block-score-critico { background: #fee2e2; }
+    .block-score-critico .block-pct, .block-score-critico .block-label { color: #991b1b; }
+    .block-score-pendente { background: #f3f4f6; }
+    .block-score-pendente .block-pct, .block-score-pendente .block-label { color: #4b5563; }
     .item { margin: 8px 0; padding: 8px 12px; border-left: 3px solid #ddd; font-size: 13px; page-break-inside: avoid; }
     .item-conforme { border-left-color: #10b981; }
     .item-parcial { border-left-color: #f59e0b; }
@@ -767,8 +799,27 @@ export default function Home() {
   <div class="stats">
     <div class="stat stat-conforme">Conforme: ${stats.conforme}</div>
     <div class="stat stat-parcial">Parcial: ${stats.parcial}</div>
-    <div class="stat stat-nconforme">Não Conforme: ${stats.nconforme}</div>
+    <div class="stat stat-nconforme">N\u00e3o Conforme: ${stats.nconforme}</div>
     <div class="stat stat-na">N/A: ${stats.na}</div>
+  </div>
+  <h2>Resumo de Prontid\u00e3o por Bloco</h2>
+  <div class="block-summary">
+    ${blocks.map((block) => {
+      const evaluated = block.items.filter((i) => i.status !== null && i.status !== "na");
+      let pct = 0;
+      let label = "Pendente";
+      let cls = "block-score-pendente";
+      if (evaluated.length > 0) {
+        const maxS = evaluated.reduce((s, i) => s + i.weight * 3, 0);
+        const actS = evaluated.reduce((s, i) => s + i.weight * (i.status === "conforme" ? 3 : i.status === "parcial" ? 1.5 : 0), 0);
+        pct = maxS > 0 ? Math.round((actS / maxS) * 100) : 0;
+        if (pct >= 80) { label = "Pronto"; cls = "block-score-pronto"; }
+        else if (pct >= 60) { label = "Quase Pronto"; cls = "block-score-quase"; }
+        else if (pct >= 40) { label = "Em Dev."; cls = "block-score-dev"; }
+        else { label = "Cr\u00edtico"; cls = "block-score-critico"; }
+      }
+      return `<div class="block-score-item ${cls}"><div class="block-title">${block.title}</div><div class="block-pct">${pct}%</div><div class="block-label">${label}</div></div>`;
+    }).join("")}
   </div>
   ${blocks.map((block) => `
     <h2>${block.title}</h2>
@@ -853,6 +904,7 @@ export default function Home() {
         <nav className="flex flex-col gap-1">
           {blocks.map((block) => {
             const bs = blockStats(block.id);
+            const brs = blockReadinessScore(block.id);
             const isActive = activeBlock === block.id;
             return (
               <button
@@ -869,7 +921,9 @@ export default function Home() {
                   <p className="truncate text-xs font-medium">{block.title}</p>
                   <p className="text-[10px] opacity-70">{bs.done}/{bs.total}</p>
                 </div>
-                {isActive && <ChevronRight className="w-3 h-3 shrink-0" />}
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${brs.bgColor} ${brs.color}`}>
+                  {brs.percentage}%
+                </span>
               </button>
             );
           })}
@@ -956,7 +1010,9 @@ export default function Home() {
         </div>
 
         {/* Active Block */}
-        {blocks.filter((b) => b.id === activeBlock).map((block) => (
+        {blocks.filter((b) => b.id === activeBlock).map((block) => {
+          const brs = blockReadinessScore(block.id);
+          return (
           <section key={block.id} className="space-y-4">
             <div className="flex items-center gap-3 mb-4">
               <div className="p-2 rounded-lg bg-[#C41E3A]/10 text-[#C41E3A]">
@@ -966,8 +1022,12 @@ export default function Home() {
                 <h2 className="text-xl font-bold" style={{ fontFamily: "var(--font-heading)" }}>{block.title}</h2>
                 <p className="text-xs text-muted-foreground">{blockStats(block.id).done} de {blockStats(block.id).total} avaliados</p>
               </div>
-              <div className="ml-auto">
-                <Progress value={blockStats(block.id).progress} className="w-24 h-2" />
+              <div className="ml-auto flex items-center gap-3">
+                <div className="text-right">
+                  <span className={`text-lg font-bold ${brs.color}`}>{brs.percentage}%</span>
+                  <p className={`text-[10px] font-medium ${brs.color}`}>{brs.label}</p>
+                </div>
+                <Progress value={brs.percentage} className="w-20 h-2" />
               </div>
             </div>
 
@@ -1041,7 +1101,8 @@ export default function Home() {
               </Card>
             ))}
           </section>
-        ))}
+          );
+        })}
 
         {/* Melhorias */}
         <Card className="p-6 mt-8 bg-card border-border">
